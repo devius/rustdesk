@@ -13,6 +13,7 @@ import 'package:flutter_hbb/desktop/pages/connection_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';
 import 'package:flutter_hbb/desktop/widgets/update_progress.dart';
+import 'package:flutter_hbb/mobile/widgets/dialog.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/models/server_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
@@ -92,6 +93,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       buildTip(context),
       if (!isOutgoingOnly) buildIDBoard(context),
       if (!isOutgoingOnly) buildPasswordBoard(context),
+      buildServerProfileBoard(context),
       FutureBuilder<Widget>(
         future: Future.value(
             Obx(() => buildHelpCards(stateGlobal.updateUrl.value))),
@@ -251,6 +253,102 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         ],
       ),
     );
+  }
+
+  /// Quick switch between saved ID/Relay server profiles.
+  /// Profiles are created in Settings > Network > ID/Relay Server.
+  Widget buildServerProfileBoard(BuildContext context) {
+    const kManage = '\u0000manage';
+    // Empty config = RustDesk public servers.
+    const kPublic = '\u0000public';
+    final publicConfig = ServerConfig().encode();
+    if (bind.mainGetBuildinOption(key: kOptionHideServerSetting) == 'Y') {
+      return const Offstage();
+    }
+    return Obx(() {
+      final names = serverProfiles.keys.toList()..sort();
+      final active = activeServerConfig.value == publicConfig
+          ? kPublic
+          : names.firstWhereOrNull(
+              (n) => serverProfiles[n] == activeServerConfig.value);
+      var current = '';
+      try {
+        current = ServerConfig.decode(activeServerConfig.value).idServer;
+      } catch (_) {}
+      return Container(
+        margin: const EdgeInsets.only(left: 20, right: 16, top: 13),
+        child: Row(
+          children: [
+            Container(
+              width: 2,
+              height: 52,
+              decoration: const BoxDecoration(color: MyTheme.accent),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    translate('Server'),
+                    style: TextStyle(
+                        fontSize: 14,
+                        color: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.color
+                            ?.withOpacity(0.5)),
+                  ),
+                  DropdownButton<String>(
+                    value: active,
+                    hint: Text(current,
+                        overflow: TextOverflow.ellipsis),
+                    isExpanded: true,
+                    isDense: true,
+                    underline: const SizedBox.shrink(),
+                    items: [
+                      DropdownMenuItem(
+                          value: kPublic,
+                          child: Text('RustDesk (${translate('Public')})',
+                              overflow: TextOverflow.ellipsis)),
+                      ...names.map((n) => DropdownMenuItem(
+                          value: n,
+                          child: Text(n, overflow: TextOverflow.ellipsis))),
+                      DropdownMenuItem(
+                          value: kManage,
+                          child: Text('${translate('Manage')}…',
+                              style: TextStyle(color: MyTheme.accent))),
+                    ],
+                    onChanged: (name) {
+                      if (name == null || name == active) return;
+                      // Same gate as Settings > Network when installed.
+                      unlocked() async {
+                        if (name == kManage) {
+                          showServerSettings(gFFI.dialogManager, (_) {});
+                          return;
+                        }
+                        final ok = await setServerConfig(
+                            null,
+                            null,
+                            name == kPublic
+                                ? ServerConfig()
+                                : ServerConfig.decode(serverProfiles[name]));
+                        showToast(translate(ok ? 'Successful' : 'Failed'));
+                      }
+
+                      if (bind.mainIsInstalled()) {
+                        checkSettingsUnlock(unlocked);
+                      } else {
+                        unlocked();
+                      }
+                    },
+                  ).marginOnly(top: 6),
+                ],
+              ).marginOnly(left: 7),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   Widget buildPopupMenu(BuildContext context) {
@@ -695,6 +793,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   @override
   void initState() {
     super.initState();
+    loadServerProfiles();
     _updateTimer = periodic_immediate(const Duration(seconds: 1), () async {
       await gFFI.serverModel.fetchID();
       final error = await bind.mainGetError();

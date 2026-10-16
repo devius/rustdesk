@@ -2973,6 +2973,27 @@ class ServerConfig {
         key = options['key'] ?? "";
 }
 
+/// Saved server profiles: name -> [ServerConfig.encode], kept in local config.
+final serverProfiles = <String, dynamic>{}.obs;
+
+/// Encoded config currently applied, to show which profile is active.
+final activeServerConfig = ''.obs;
+
+Future<void> loadServerProfiles() async {
+  try {
+    serverProfiles.value = Map<String, dynamic>.from(
+        jsonDecode(bind.mainGetLocalOption(key: 'server-profiles')));
+  } catch (_) {}
+  try {
+    activeServerConfig.value =
+        ServerConfig.fromOptions(jsonDecode(await bind.mainGetOptions()))
+            .encode();
+  } catch (_) {}
+}
+
+void saveServerProfiles() => bind.mainSetLocalOption(
+    key: 'server-profiles', value: jsonEncode(Map.of(serverProfiles)));
+
 Widget dialogButton(String text,
     {required VoidCallback? onPressed,
     bool isOutline = false,
@@ -3633,6 +3654,7 @@ Future<bool> setServerConfig(
   await bind.mainSetOption(key: 'relay-server', value: config.relayServer);
   await bind.mainSetOption(key: 'api-server', value: config.apiServer);
   await bind.mainSetOption(key: 'key', value: config.key);
+  activeServerConfig.value = config.encode();
   final newApiServer = await bind.mainGetApiServer();
   if (oldApiServer.isNotEmpty &&
       oldApiServer != newApiServer &&

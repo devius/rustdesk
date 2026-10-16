@@ -86,7 +86,67 @@ void showServerSettingsWithValue(
     apiServerMsg,
   ];
 
+  await loadServerProfiles();
+  final profiles = serverProfiles;
+  final profileCtrl = TextEditingController();
+
   dialogManager.show((setState, close, context) {
+    Widget buildProfileRow() {
+      final names = profiles.keys.toList()..sort();
+      return Row(
+        children: [
+          Expanded(
+            child: DropdownMenu<String>(
+              controller: profileCtrl,
+              expandedInsets: EdgeInsets.zero,
+              hintText: translate('Profile'),
+              dropdownMenuEntries: names
+                  .map((n) => DropdownMenuEntry(value: n, label: n))
+                  .toList(),
+              onSelected: (name) {
+                if (name == null) return;
+                final c = ServerConfig.decode(profiles[name]);
+                idCtrl.text = c.idServer;
+                relayCtrl.text = c.relayServer;
+                apiCtrl.text = c.apiServer;
+                keyCtrl.text = c.key;
+              },
+            ),
+          ),
+          Tooltip(
+            message: translate('Save'),
+            child: IconButton(
+              icon: Icon(Icons.save, color: Colors.grey),
+              onPressed: () {
+                final name = profileCtrl.text.trim();
+                if (name.isEmpty) return;
+                setState(() => profiles[name] = ServerConfig(
+                        idServer: idCtrl.text,
+                        relayServer: relayCtrl.text,
+                        apiServer: apiCtrl.text,
+                        key: keyCtrl.text)
+                    .encode());
+                saveServerProfiles();
+                showToast(translate('Successful'));
+              },
+            ),
+          ),
+          Tooltip(
+            message: translate('Delete'),
+            child: IconButton(
+              icon: Icon(Icons.delete_outline, color: Colors.grey),
+              onPressed: () {
+                if (profiles.remove(profileCtrl.text.trim()) == null) return;
+                setState(() => profileCtrl.clear());
+                saveServerProfiles();
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
+
     Future<bool> submit() async {
       setState(() {
         isInProgress = true;
@@ -153,6 +213,8 @@ void showServerSettingsWithValue(
           child: Obx(() => Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  buildProfileRow(),
+                  SizedBox(height: 8),
                   buildField(translate('ID Server'), idCtrl, idServerMsg.value,
                       autofocus: true),
                   SizedBox(height: 8),

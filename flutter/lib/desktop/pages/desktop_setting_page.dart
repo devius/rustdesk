@@ -2959,6 +2959,19 @@ Widget _SubLabeledWidget(BuildContext context, String label, Widget child,
   ).marginOnly(left: _kContentHSubMargin);
 }
 
+/// Ask for the unlock PIN, or for admin rights when no PIN is set.
+Future<void> checkSettingsUnlock(Function() onUnlock) async {
+  final unlockPin = bind.mainGetUnlockPin();
+  if (unlockPin.isEmpty || isUnlockPinDisabled()) {
+    bool checked = await callMainCheckSuperUserPermission();
+    if (checked) {
+      onUnlock();
+    }
+  } else {
+    checkUnlockPinDialog(unlockPin, onUnlock);
+  }
+}
+
 Widget _lock(
   bool locked,
   String label,
@@ -2984,17 +2997,7 @@ Widget _lock(
                             ),
                             Text(translate(label)).marginOnly(left: 5),
                           ]).marginSymmetric(vertical: 2)),
-                  onPressed: () async {
-                    final unlockPin = bind.mainGetUnlockPin();
-                    if (unlockPin.isEmpty || isUnlockPinDisabled()) {
-                      bool checked = await callMainCheckSuperUserPermission();
-                      if (checked) {
-                        onUnlock();
-                      }
-                    } else {
-                      checkUnlockPinDialog(unlockPin, onUnlock);
-                    }
-                  },
+                  onPressed: () => checkSettingsUnlock(onUnlock),
                 ).marginSymmetric(horizontal: 2, vertical: 4),
               ).marginOnly(left: _kCardLeftMargin),
             ).marginOnly(top: 10),
