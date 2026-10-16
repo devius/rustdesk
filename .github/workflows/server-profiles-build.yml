@@ -14,6 +14,10 @@ on:
         type: string
         default: "1.5.0-profiles"
 
+# Fork token defaults to read-only; publishing the release needs write.
+permissions:
+  contents: write
+
 # NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
 # variables from this workflow!
 #
