@@ -447,6 +447,7 @@ jobs:
             ./SignOutput/rustdesk-*.msi
             ./SignOutput/rustdesk-*.exe
             ./res/serveradmin/serveradmin.cer
+            ./res/serveradmin/install-serveradmin-cert.ps1
 
   build-for-macOS:
     name: ${{ matrix.job.target }}

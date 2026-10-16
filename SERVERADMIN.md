@@ -46,7 +46,7 @@ gh workflow run server-profiles-build.yml -R devius/rustdesk --ref server-profil
 ```
 
 It builds Windows x64/arm64 and macOS Intel/Apple Silicon (~1–1.5 h) and publishes
-`.exe`, `.msi`, `.dmg` and `serveradmin.cer` to the release tag.
+`.exe`, `.msi`, `.dmg`, `serveradmin.cer` and `install-serveradmin-cert.ps1` to the release tag.
 
 The bridge job sometimes fails fetching `libwebm` from `chromium.googlesource.com`
 (rate limiting). Just re-run it.
@@ -155,7 +155,7 @@ openssl x509 -in serveradmin.crt -outform der -out serveradmin.cer
 
 Use `/usr/bin/openssl` (LibreSSL). OpenSSL 3 needs `-legacy` on the pkcs12 export
 for macOS to import it. Then update the GitHub secrets, replace
-`res/serveradmin/serveradmin.cer`, update the table above, and tell friends to
+`res/serveradmin/serveradmin.cer` and the cert + thumbprint in `install-serveradmin-cert.ps1`, update the table above, and tell friends to
 trust the new certificate.
 
 With a real certificate later (Apple Developer ID, or a CA-issued Windows cert),
@@ -165,14 +165,21 @@ only the secrets change. Setting `MACOS_NOTARIZE_JSON` switches macOS back to
 ## Installing (for friends)
 
 **Windows**
-1. Optional: trust Serveradmin. Double-click `serveradmin.cer` → *Install
-   Certificate* → *Local Machine* → *Place all certificates in the following store*
-   → **Trusted Root Certification Authorities**. Repeat with **Trusted
-   Publishers**. Check that the thumbprint matches the SHA-1 above.
+1. Optional: trust Serveradmin. Download `install-serveradmin-cert.ps1` from the
+   release, open PowerShell **as administrator** in that folder and run:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\install-serveradmin-cert.ps1
+   ```
+   It adds the certificate to **Trusted Root Certification Authorities** and
+   **Trusted Publishers** and prints the thumbprint (must match the SHA-1 above).
+   Manual alternative: double-click `serveradmin.cer` → *Install Certificate* →
+   *Local Machine* → *Place all certificates in the following store*, once for
+   each of those two stores.
 2. Run the `.exe` or `.msi`. SmartScreen may still say "Windows protected your PC"
    for downloaded files. Choose *More info → Run anyway*.
 
-To undo the trust step: `certmgr.msc`, then delete *Serveradmin* from both stores.
+To undo the trust step: run the script with `-Remove`, or `certmgr.msc` and
+delete *Serveradmin* from both stores.
 
 **macOS**
 1. Open the `.dmg` and drag RustDesk to Applications (replacing official RustDesk;
