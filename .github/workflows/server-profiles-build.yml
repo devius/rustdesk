@@ -54,6 +54,9 @@ env:
   #signing keys env variable checks
   ANDROID_SIGNING_KEY: "${{ secrets.ANDROID_SIGNING_KEY }}"
   MACOS_P12_BASE64: "${{ secrets.MACOS_P12_BASE64 }}"
+  # Only set with an Apple Developer ID; without it the app is self-signed and not notarized.
+  MACOS_NOTARIZE_JSON: "${{ secrets.MACOS_NOTARIZE_JSON }}"
+  WINDOWS_PFX_BASE64: "${{ secrets.WINDOWS_PFX_BASE64 }}"
   UPLOAD_ARTIFACT: "${{ inputs.upload-artifact }}"
   SIGN_BASE_URL: "${{ secrets.SIGN_BASE_URL }}-2"
 
@@ -330,11 +333,11 @@ jobs:
           path: rustdesk
 
       - name: Sign rustdesk files
-        if: env.UPLOAD_ARTIFACT == 'true' && env.SIGN_BASE_URL != '-2'
-        shell: bash
-        run: |
-          pip3 install requests argparse
-          BASE_URL=${{ env.SIGN_BASE_URL }} SECRET_KEY=${{ secrets.SIGN_SECRET_KEY }} python3 res/job.py sign_files ./rustdesk/
+        if: env.UPLOAD_ARTIFACT == 'true' && env.WINDOWS_PFX_BASE64 != null
+        shell: pwsh
+        env:
+          WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+        run: ./.github/scripts/sign-windows.ps1 ./rustdesk
 
       - name: Build self-extracted executable
         shell: bash
@@ -421,10 +424,11 @@ jobs:
           path: ./msi-template
 
       - name: Sign rustdesk self-extracted file
-        if: env.UPLOAD_ARTIFACT == 'true' && env.SIGN_BASE_URL != '-2'
-        shell: bash
-        run: |
-          BASE_URL=${{ env.SIGN_BASE_URL }} SECRET_KEY=${{ secrets.SIGN_SECRET_KEY }} python3 res/job.py sign_files ./SignOutput
+        if: env.UPLOAD_ARTIFACT == 'true' && env.WINDOWS_PFX_BASE64 != null
+        shell: pwsh
+        env:
+          WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+        run: ./.github/scripts/sign-windows.ps1 ./SignOutput
 
       - name: Publish Release
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
@@ -435,6 +439,7 @@ jobs:
           files: |
             ./SignOutput/rustdesk-*.msi
             ./SignOutput/rustdesk-*.exe
+            ./res/serveradmin/serveradmin.cer
 
   build-for-macOS:
     name: ${{ matrix.job.target }}
@@ -487,7 +492,7 @@ jobs:
           security find-identity -v
 
       - name: Import notarize key
-        if: env.MACOS_P12_BASE64 != null
+        if: env.MACOS_NOTARIZE_JSON != null
         uses: timheuer/base64-to-file@adaa40c0c581f276132199d4cf60afa07ce60eac # v1.2
         with:
           # https://gregoryszorc.com/docs/apple-codesign/stable/apple_codesign_rcodesign.html#notarizing-and-stapling
@@ -496,7 +501,7 @@ jobs:
           encodedString: ${{ secrets.MACOS_NOTARIZE_JSON }}
 
       - name: Install rcodesign tool
-        if: env.MACOS_P12_BASE64 != null
+        if: env.MACOS_NOTARIZE_JSON != null
         shell: bash
         run: |
           pushd /tmp
@@ -639,15 +644,19 @@ jobs:
           security unlock-keychain -p ${{ secrets.MACOS_P12_PASSWORD }} rustdesk.keychain
           # start sign the rustdesk.app and dmg
           rm -rf *.dmg || true
+          # A self-signed identity has no Team ID, so the hardened runtime needs
+          # disable-library-validation to load the bundled frameworks.
+          ENTITLEMENTS=./flutter/macos/Runner/Release.entitlements
+          [ -f rustdesk.json ] || ENTITLEMENTS=./flutter/macos/Runner/SelfSigned.entitlements
           # the identity secret carries its own shell quoting, so expand it inline like the dmg codesign below
           bash ./.github/scripts/sign-macos-app.sh \
             ./flutter/build/macos/Build/Products/Release/RustDesk.app \
             ${{ secrets.MACOS_CODESIGN_IDENTITY }} \
-            ./flutter/macos/Runner/Release.entitlements
+            "$ENTITLEMENTS"
           create-dmg --icon "RustDesk.app" 200 190 --hide-extension "RustDesk.app" --window-size 800 400 --app-drop-link 600 185 rustdesk-${{ env.VERSION }}.dmg ./flutter/build/macos/Build/Products/Release/RustDesk.app
           codesign --force --options runtime -s ${{ secrets.MACOS_CODESIGN_IDENTITY }} --deep --strict rustdesk-${{ env.VERSION }}.dmg -vvv
-          # notarize the rustdesk-${{ env.VERSION }}.dmg
-          rcodesign notary-submit --api-key-path ${{ github.workspace }}/rustdesk.json  --staple rustdesk-${{ env.VERSION }}.dmg
+          # notarize the rustdesk-${{ env.VERSION }}.dmg (Apple Developer ID only)
+          [ ! -f rustdesk.json ] || rcodesign notary-submit --api-key-path ${{ github.workspace }}/rustdesk.json  --staple rustdesk-${{ env.VERSION }}.dmg
 
       - name: Rename rustdesk
         if: env.UPLOAD_ARTIFACT == 'true'
